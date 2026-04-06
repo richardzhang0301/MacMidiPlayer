@@ -6,6 +6,7 @@ struct ContentView: View {
     @StateObject private var viewModel = PlayerViewModel()
     @State private var isDragOver = false
     @State private var showTracks = false
+    @State private var showBeats = false
 
     var body: some View {
         VStack(spacing: 16) {
@@ -112,7 +113,7 @@ struct ContentView: View {
                     if let fileName = viewModel.loadedFileName {
                         Text(fileName)
                             .font(.headline)
-                        Text(String(format: "Duration: %.1f beats  |  Tempo: %.0f BPM", viewModel.duration, viewModel.tempo))
+                        Text("Duration: \(formatPosition(viewModel.duration))\(showBeats ? " beats" : "")  |  Tempo: \(String(format: "%.0f", viewModel.tempo)) BPM")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else {
@@ -144,11 +145,13 @@ struct ContentView: View {
                 )
 
                 HStack {
-                    Text(formatBeats(viewModel.currentPosition))
+                    Text(formatPosition(viewModel.currentPosition))
                         .font(.caption.monospaced())
+                        .onTapGesture { showBeats.toggle() }
                     Spacer()
-                    Text(formatBeats(viewModel.duration))
+                    Text(formatPosition(viewModel.duration))
                         .font(.caption.monospaced())
+                        .onTapGesture { showBeats.toggle() }
                 }
             }
 
@@ -173,7 +176,15 @@ struct ContentView: View {
 
     // MARK: - Helpers
 
-    private func formatBeats(_ beats: TimeInterval) -> String {
-        String(format: "%.1f", beats)
+    private func formatPosition(_ beats: TimeInterval) -> String {
+        if showBeats {
+            return String(format: "%.1f", beats)
+        }
+        let seconds = beats * 60.0 / max(viewModel.tempo, 1)
+        let totalSeconds = Int(seconds)
+        let h = totalSeconds / 3600
+        let m = (totalSeconds % 3600) / 60
+        let s = totalSeconds % 60
+        return String(format: "%02d:%02d:%02d", h, m, s)
     }
 }
