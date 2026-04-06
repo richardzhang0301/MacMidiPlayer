@@ -1,3 +1,4 @@
+import CoreMIDI
 import Foundation
 
 struct TrackInfo: Identifiable {
@@ -6,6 +7,7 @@ struct TrackInfo: Identifiable {
     var bankMSB: UInt8
     var program: UInt8
     var noteCount: Int
+    var outputDeviceID: MIDIUniqueID?   // nil = use main output
 
     var instrumentName: String {
         GM2Instruments.name(forProgram: program, bank: bankMSB)

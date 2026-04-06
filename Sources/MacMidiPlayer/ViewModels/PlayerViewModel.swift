@@ -123,7 +123,7 @@ final class PlayerViewModel: ObservableObject {
     func changeInstrument(trackIndex: Int, bankMSB: UInt8, program: UInt8) {
         guard let infoIndex = midiEngine.trackInfos.firstIndex(where: { $0.id == trackIndex }) else { return }
         let channel = midiEngine.trackInfos[infoIndex].channel
-        let endpoint = midiEngine.destinationEndpoint
+        let endpoint = endpointForTrack(at: infoIndex)
 
         // Send Bank Select + Program Change immediately so the device switches now
         midiManager.sendBytes([0xB0 | channel, 0, bankMSB], toEndpoint: endpoint)
@@ -131,5 +131,43 @@ final class PlayerViewModel: ObservableObject {
 
         // Update the sequence track so the change persists during playback
         midiEngine.updateTrackInstrument(trackIndex: trackIndex, bankMSB: bankMSB, program: program)
+    }
+
+    // MARK: - Per-Track Output
+
+    func changeTrackOutput(trackIndex: Int, deviceID: MIDIUniqueID?) {
+        guard let infoIndex = midiEngine.trackInfos.firstIndex(where: { $0.id == trackIndex }) else { return }
+        let info = midiEngine.trackInfos[infoIndex]
+
+        if let deviceID = deviceID,
+           let dest = midiManager.availableDestinations.first(where: { $0.id == deviceID }) {
+            // Register endpoint and set per-track destination
+            midiEngine.registerTrackEndpoint(deviceID: deviceID, endpoint: dest.endpointRef)
+            midiEngine.trackInfos[infoIndex].outputDeviceID = deviceID
+            midiEngine.setTrackDestination(trackIndex: trackIndex, endpoint: dest.endpointRef)
+
+            // Send Bank Select + Program Change to the new device so it plays the right sound
+            let channel = info.channel
+            midiManager.sendBytes([0xB0 | channel, 0, info.bankMSB], toEndpoint: dest.endpointRef)
+            midiManager.sendBytes([0xC0 | channel, info.program], toEndpoint: dest.endpointRef)
+        } else {
+            // Revert to main output
+            midiEngine.trackInfos[infoIndex].outputDeviceID = nil
+            midiEngine.setTrackDestination(trackIndex: trackIndex, endpoint: midiEngine.destinationEndpoint)
+
+            // Send Bank Select + Program Change to the main device
+            let channel = info.channel
+            midiManager.sendBytes([0xB0 | channel, 0, info.bankMSB], toEndpoint: midiEngine.destinationEndpoint)
+            midiManager.sendBytes([0xC0 | channel, info.program], toEndpoint: midiEngine.destinationEndpoint)
+        }
+    }
+
+    private func endpointForTrack(at infoIndex: Int) -> MIDIEndpointRef {
+        let info = midiEngine.trackInfos[infoIndex]
+        if let deviceID = info.outputDeviceID,
+           let endpoint = midiEngine.trackEndpoints[deviceID] {
+            return endpoint
+        }
+        return midiEngine.destinationEndpoint
     }
 }

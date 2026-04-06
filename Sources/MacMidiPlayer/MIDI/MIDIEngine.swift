@@ -108,16 +108,68 @@ final class MIDIEngine: ObservableObject {
         }
     }
 
+    func setTrackDestination(trackIndex: Int, endpoint: MIDIEndpointRef) {
+        guard let seq = musicSequence else { return }
+        var track: MusicTrack?
+        MusicSequenceGetIndTrack(seq, UInt32(trackIndex), &track)
+        guard let track = track else { return }
+
+        MusicTrackSetDestMIDIEndpoint(track, endpoint)
+
+        // If the player is active, we must restart it for the new routing to take effect.
+        guard let player = musicPlayer else { return }
+        let wasPlaying = playbackState == .playing
+
+        if wasPlaying {
+            var time: MusicTimeStamp = 0
+            MusicPlayerGetTime(player, &time)
+            MusicPlayerStop(player)
+            MusicPlayerPreroll(player)
+            MusicPlayerSetTime(player, time)
+            MusicPlayerStart(player)
+        } else {
+            MusicPlayerPreroll(player)
+        }
+    }
+
     private func applyDestination(to seq: MusicSequence) {
         var trackCount: UInt32 = 0
         MusicSequenceGetTrackCount(seq, &trackCount)
         for i in 0..<trackCount {
             var track: MusicTrack?
             MusicSequenceGetIndTrack(seq, i, &track)
-            if let track = track {
+            guard let track = track else { continue }
+            // Use per-track override if set, otherwise use main destination
+            if let info = trackInfos.first(where: { $0.id == Int(i) }),
+               let overrideID = info.outputDeviceID,
+               let overrideEndpoint = trackEndpoints[overrideID] {
+                MusicTrackSetDestMIDIEndpoint(track, overrideEndpoint)
+            } else {
                 MusicTrackSetDestMIDIEndpoint(track, destinationEndpoint)
             }
         }
+
+        // Re-preroll so the player picks up the new routing
+        if let player = musicPlayer {
+            let wasPlaying = playbackState == .playing
+            if wasPlaying {
+                var time: MusicTimeStamp = 0
+                MusicPlayerGetTime(player, &time)
+                MusicPlayerStop(player)
+                MusicPlayerPreroll(player)
+                MusicPlayerSetTime(player, time)
+                MusicPlayerStart(player)
+            } else {
+                MusicPlayerPreroll(player)
+            }
+        }
+    }
+
+    // Per-track endpoint cache (deviceID → endpointRef)
+    private(set) var trackEndpoints: [MIDIUniqueID: MIDIEndpointRef] = [:]
+
+    func registerTrackEndpoint(deviceID: MIDIUniqueID, endpoint: MIDIEndpointRef) {
+        trackEndpoints[deviceID] = endpoint
     }
 
     // MARK: - Playback Control

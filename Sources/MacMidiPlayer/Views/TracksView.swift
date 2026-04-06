@@ -1,3 +1,4 @@
+import CoreMIDI
 import SwiftUI
 
 struct TracksView: View {
@@ -13,6 +14,7 @@ struct TracksView: View {
         let originalBank: UInt8
         var bankText: String
         var programText: String
+        var outputDeviceID: MIDIUniqueID?
     }
 
     var body: some View {
@@ -28,11 +30,12 @@ struct TracksView: View {
                 // Header
                 HStack(spacing: 0) {
                     Text("Ch").frame(width: 30, alignment: .center)
-                    Text("Instrument").frame(minWidth: 160, alignment: .leading).padding(.leading, 8)
-                    Text("Notes").frame(width: 50, alignment: .center)
-                    Text("Bank").frame(width: 50, alignment: .center)
-                    Text("Prog").frame(width: 50, alignment: .center)
-                    Spacer().frame(width: 50)
+                    Text("Instrument").frame(minWidth: 140, alignment: .leading).padding(.leading, 8)
+                    Text("Notes").frame(width: 45, alignment: .center)
+                    Text("Bank").frame(width: 45, alignment: .center)
+                    Text("Prog").frame(width: 45, alignment: .center)
+                    Spacer().frame(width: 40)
+                    Text("Output Device").frame(minWidth: 140, alignment: .leading).padding(.leading, 8)
                 }
                 .font(.caption.bold())
                 .foregroundStyle(.secondary)
@@ -55,7 +58,7 @@ struct TracksView: View {
             }
         }
         .padding()
-        .frame(minWidth: 500, maxWidth: 500, minHeight: 300, maxHeight: 500)
+        .frame(minWidth: 700, maxWidth: 700, minHeight: 300, maxHeight: 500)
         .onAppear { loadRows() }
     }
 
@@ -71,24 +74,24 @@ struct TracksView: View {
                 .font(.caption.monospaced())
 
             Text(instrumentName)
-                .frame(minWidth: 160, alignment: .leading)
+                .frame(minWidth: 140, alignment: .leading)
                 .padding(.leading, 8)
                 .font(.caption)
                 .lineLimit(1)
 
             Text("\(row.noteCount)")
-                .frame(width: 50, alignment: .center)
+                .frame(width: 45, alignment: .center)
                 .font(.caption.monospaced())
                 .foregroundStyle(row.noteCount > 0 ? .green : .secondary)
 
             TextField("0", text: $rows[index].bankText)
-                .frame(width: 50)
+                .frame(width: 45)
                 .textFieldStyle(.roundedBorder)
                 .font(.caption.monospaced())
                 .multilineTextAlignment(.center)
 
             TextField("0", text: $rows[index].programText)
-                .frame(width: 50)
+                .frame(width: 45)
                 .textFieldStyle(.roundedBorder)
                 .font(.caption.monospaced())
                 .multilineTextAlignment(.center)
@@ -97,8 +100,21 @@ struct TracksView: View {
                 applyChange(index: index)
             }
             .font(.caption)
-            .frame(width: 50)
+            .frame(width: 40)
             .disabled(!isValid(row: rows[index]))
+
+            Picker("", selection: $rows[index].outputDeviceID) {
+                Text("Main").tag(nil as MIDIUniqueID?)
+                ForEach(viewModel.availableDestinations) { dest in
+                    Text(dest.name).tag(dest.id as MIDIUniqueID?)
+                }
+            }
+            .labelsHidden()
+            .frame(minWidth: 140)
+            .font(.caption)
+            .onChange(of: rows[index].outputDeviceID) { newValue in
+                viewModel.changeTrackOutput(trackIndex: rows[index].id, deviceID: newValue)
+            }
         }
     }
 
@@ -122,7 +138,8 @@ struct TracksView: View {
                 originalProgram: info.program,
                 originalBank: info.bankMSB,
                 bankText: "\(info.bankMSB)",
-                programText: "\(info.program)"
+                programText: "\(info.program)",
+                outputDeviceID: info.outputDeviceID
             )
         }
     }

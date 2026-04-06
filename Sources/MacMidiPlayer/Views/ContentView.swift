@@ -73,7 +73,7 @@ struct ContentView: View {
     private var deviceSection: some View {
         VStack(spacing: 10) {
             HStack {
-                Text("Output Device:")
+                Text("Main Output:")
                     .frame(width: 110, alignment: .trailing)
                 Picker("", selection: Binding(
                     get: { viewModel.selectedOutputID },
