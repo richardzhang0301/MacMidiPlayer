@@ -9,11 +9,12 @@ final class MIDIEngine: ObservableObject {
     @Published var tempo: Double = 120.0
     @Published var loadedFileName: String?
     @Published var detectedStandards: Set<MIDIStandard> = []
+    @Published var trackInfos: [TrackInfo] = []
 
     private var musicSequence: MusicSequence?
     private var musicPlayer: MusicPlayer?
     private var positionTimer: Timer?
-    private var destinationEndpoint: MIDIEndpointRef = 0
+    private(set) var destinationEndpoint: MIDIEndpointRef = 0
 
     init() {
         createPlayer()
@@ -93,6 +94,7 @@ final class MIDIEngine: ObservableObject {
         }
 
         self.playbackState = .stopped
+        self.trackInfos = extractTrackInfos(from: seq)
 
         return true
     }
@@ -209,6 +211,142 @@ final class MIDIEngine: ObservableObject {
         }
 
         return maxDuration
+    }
+
+    // MARK: - Track Info
+
+    private func extractTrackInfos(from seq: MusicSequence) -> [TrackInfo] {
+        var trackCount: UInt32 = 0
+        MusicSequenceGetTrackCount(seq, &trackCount)
+        var infos: [TrackInfo] = []
+
+        for i in 0..<trackCount {
+            var track: MusicTrack?
+            MusicSequenceGetIndTrack(seq, i, &track)
+            guard let track = track else { continue }
+
+            var channel: UInt8 = 0
+            var bankMSB: UInt8 = 0
+            var program: UInt8 = 0
+            var noteCount: Int = 0
+            var foundChannel = false
+
+            var iterator: MusicEventIterator?
+            NewMusicEventIterator(track, &iterator)
+            guard let iterator = iterator else { continue }
+
+            var hasEvent: DarwinBoolean = false
+            MusicEventIteratorHasCurrentEvent(iterator, &hasEvent)
+
+            while hasEvent.boolValue {
+                var timestamp: MusicTimeStamp = 0
+                var eventType: MusicEventType = 0
+                var eventData: UnsafeRawPointer?
+                var eventDataSize: UInt32 = 0
+
+                MusicEventIteratorGetEventInfo(iterator, &timestamp, &eventType, &eventData, &eventDataSize)
+
+                if eventType == kMusicEventType_MIDINoteMessage {
+                    let noteMsg = eventData!.assumingMemoryBound(to: MIDINoteMessage.self)
+                    if !foundChannel {
+                        channel = noteMsg.pointee.channel
+                        foundChannel = true
+                    }
+                    noteCount += 1
+                } else if eventType == kMusicEventType_MIDIChannelMessage {
+                    let chanMsg = eventData!.assumingMemoryBound(to: MIDIChannelMessage.self)
+                    let status = chanMsg.pointee.status
+                    let msgType = status & 0xF0
+                    if !foundChannel {
+                        channel = status & 0x0F
+                        foundChannel = true
+                    }
+                    if msgType == 0xC0 {
+                        program = chanMsg.pointee.data1
+                    } else if msgType == 0xB0 && chanMsg.pointee.data1 == 0 {
+                        bankMSB = chanMsg.pointee.data2
+                    }
+                }
+
+                MusicEventIteratorNextEvent(iterator)
+                MusicEventIteratorHasCurrentEvent(iterator, &hasEvent)
+            }
+
+            DisposeMusicEventIterator(iterator)
+
+            if noteCount > 0 {
+                infos.append(TrackInfo(
+                    id: Int(i),
+                    channel: channel,
+                    bankMSB: bankMSB,
+                    program: program,
+                    noteCount: noteCount
+                ))
+            }
+        }
+
+        return infos
+    }
+
+    // MARK: - Instrument Change
+
+    func updateTrackInstrument(trackIndex: Int, bankMSB: UInt8, program: UInt8) {
+        guard let seq = musicSequence else { return }
+        var track: MusicTrack?
+        MusicSequenceGetIndTrack(seq, UInt32(trackIndex), &track)
+        guard let track = track else { return }
+
+        // Find the channel from the track info
+        guard let info = trackInfos.first(where: { $0.id == trackIndex }) else { return }
+        let channel = info.channel
+
+        // Remove existing bank select (CC 0) and program change events
+        var iterator: MusicEventIterator?
+        NewMusicEventIterator(track, &iterator)
+        guard let iterator = iterator else { return }
+
+        var hasEvent: DarwinBoolean = false
+        MusicEventIteratorHasCurrentEvent(iterator, &hasEvent)
+
+        while hasEvent.boolValue {
+            var timestamp: MusicTimeStamp = 0
+            var eventType: MusicEventType = 0
+            var eventData: UnsafeRawPointer?
+            var eventDataSize: UInt32 = 0
+
+            MusicEventIteratorGetEventInfo(iterator, &timestamp, &eventType, &eventData, &eventDataSize)
+
+            if eventType == kMusicEventType_MIDIChannelMessage {
+                let chanMsg = eventData!.assumingMemoryBound(to: MIDIChannelMessage.self)
+                let msgType = chanMsg.pointee.status & 0xF0
+                let msgChan = chanMsg.pointee.status & 0x0F
+                if msgChan == channel {
+                    if msgType == 0xC0 || (msgType == 0xB0 && chanMsg.pointee.data1 == 0) {
+                        MusicEventIteratorDeleteEvent(iterator)
+                        MusicEventIteratorHasCurrentEvent(iterator, &hasEvent)
+                        continue
+                    }
+                }
+            }
+
+            MusicEventIteratorNextEvent(iterator)
+            MusicEventIteratorHasCurrentEvent(iterator, &hasEvent)
+        }
+
+        DisposeMusicEventIterator(iterator)
+
+        // Insert new bank select and program change at timestamp 0
+        var bankMsg = MIDIChannelMessage(status: 0xB0 | channel, data1: 0, data2: bankMSB, reserved: 0)
+        MusicTrackNewMIDIChannelEvent(track, 0, &bankMsg)
+
+        var progMsg = MIDIChannelMessage(status: 0xC0 | channel, data1: program, data2: 0, reserved: 0)
+        MusicTrackNewMIDIChannelEvent(track, 0, &progMsg)
+
+        // Update local state
+        if let idx = trackInfos.firstIndex(where: { $0.id == trackIndex }) {
+            trackInfos[idx].bankMSB = bankMSB
+            trackInfos[idx].program = program
+        }
     }
 
     private func getSequenceTempo(_ seq: MusicSequence) -> Double {

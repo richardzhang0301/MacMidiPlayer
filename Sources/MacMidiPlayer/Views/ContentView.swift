@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @StateObject private var viewModel = PlayerViewModel()
     @State private var isDragOver = false
+    @State private var showTracks = false
 
     var body: some View {
         VStack(spacing: 16) {
@@ -35,13 +36,17 @@ struct ContentView: View {
                 }
             }
 
-            // MIDI Standard Indicator (bottom-left)
-            if !viewModel.detectedStandards.isEmpty {
-                Divider()
-                HStack {
+            // Bottom bar: MIDI standards (left) and Tracks button (right)
+            Divider()
+            HStack {
+                if !viewModel.detectedStandards.isEmpty {
                     MIDIStandardBar(standards: viewModel.detectedStandards)
-                    Spacer()
                 }
+                Spacer()
+                Button("Tracks") {
+                    showTracks = true
+                }
+                .disabled(viewModel.trackInfos.isEmpty)
             }
         }
         .padding()
@@ -57,6 +62,9 @@ struct ContentView: View {
             return true
         }
         .border(isDragOver ? Color.accentColor : Color.clear, width: 2)
+        .sheet(isPresented: $showTracks) {
+            TracksView(viewModel: viewModel)
+        }
     }
 
     // MARK: - Device Section

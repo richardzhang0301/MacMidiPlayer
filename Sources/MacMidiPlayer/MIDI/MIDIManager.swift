@@ -126,12 +126,16 @@ final class MIDIManager: ObservableObject {
     // MARK: - Output
 
     func send(bytes: [UInt8], to destination: MIDIDeviceInfo) {
-        guard outputPort != 0 else { return }
+        sendBytes(bytes, toEndpoint: destination.endpointRef)
+    }
+
+    func sendBytes(_ bytes: [UInt8], toEndpoint endpoint: MIDIEndpointRef) {
+        guard outputPort != 0, endpoint != 0 else { return }
         let packetListSize = MemoryLayout<MIDIPacketList>.size + bytes.count
         var packetList = MIDIPacketList()
         var packet = MIDIPacketListInit(&packetList)
         packet = MIDIPacketListAdd(&packetList, packetListSize, packet, 0, bytes.count, bytes)
-        MIDISend(outputPort, destination.endpointRef, &packetList)
+        MIDISend(outputPort, endpoint, &packetList)
     }
 
     // MARK: - MIDI Input Handling

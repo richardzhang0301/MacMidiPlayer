@@ -55,6 +55,7 @@ final class PlayerViewModel: ObservableObject {
     var loadedFileName: String? { midiEngine.loadedFileName }
     var tempo: Double { midiEngine.tempo }
     var detectedStandards: Set<MIDIStandard> { midiEngine.detectedStandards }
+    var trackInfos: [TrackInfo] { midiEngine.trackInfos }
 
     // MARK: - Input Selection
 
@@ -115,5 +116,20 @@ final class PlayerViewModel: ObservableObject {
 
     func seek(to time: TimeInterval) {
         midiEngine.seek(to: time)
+    }
+
+    // MARK: - Instrument Change
+
+    func changeInstrument(trackIndex: Int, bankMSB: UInt8, program: UInt8) {
+        guard let infoIndex = midiEngine.trackInfos.firstIndex(where: { $0.id == trackIndex }) else { return }
+        let channel = midiEngine.trackInfos[infoIndex].channel
+        let endpoint = midiEngine.destinationEndpoint
+
+        // Send Bank Select + Program Change immediately so the device switches now
+        midiManager.sendBytes([0xB0 | channel, 0, bankMSB], toEndpoint: endpoint)
+        midiManager.sendBytes([0xC0 | channel, program], toEndpoint: endpoint)
+
+        // Update the sequence track so the change persists during playback
+        midiEngine.updateTrackInstrument(trackIndex: trackIndex, bankMSB: bankMSB, program: program)
     }
 }
