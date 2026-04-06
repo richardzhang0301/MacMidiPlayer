@@ -8,6 +8,7 @@ final class MIDIEngine: ObservableObject {
     @Published var duration: TimeInterval = 0
     @Published var tempo: Double = 120.0
     @Published var loadedFileName: String?
+    @Published var detectedStandards: Set<MIDIStandard> = []
 
     private var musicSequence: MusicSequence?
     private var musicPlayer: MusicPlayer?
@@ -71,6 +72,7 @@ final class MIDIEngine: ObservableObject {
 
         self.musicSequence = seq
         self.loadedFileName = url.lastPathComponent
+        self.detectedStandards = MIDIStandardDetector.detect(from: url)
 
         // Set destination endpoint if one is selected
         if destinationEndpoint != 0 {
@@ -90,9 +92,7 @@ final class MIDIEngine: ObservableObject {
             MusicPlayerPreroll(player)
         }
 
-        DispatchQueue.main.async {
-            self.playbackState = .stopped
-        }
+        self.playbackState = .stopped
 
         return true
     }

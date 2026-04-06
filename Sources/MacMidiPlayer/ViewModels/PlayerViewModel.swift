@@ -54,6 +54,7 @@ final class PlayerViewModel: ObservableObject {
     var duration: TimeInterval { midiEngine.duration }
     var loadedFileName: String? { midiEngine.loadedFileName }
     var tempo: Double { midiEngine.tempo }
+    var detectedStandards: Set<MIDIStandard> { midiEngine.detectedStandards }
 
     // MARK: - Input Selection
 
@@ -86,6 +87,7 @@ final class PlayerViewModel: ObservableObject {
 
     func loadFile(url: URL) {
         let _ = midiEngine.loadFile(url: url)
+        play()
     }
 
     // MARK: - Transport

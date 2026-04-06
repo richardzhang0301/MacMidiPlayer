@@ -34,6 +34,15 @@ struct ContentView: View {
                     Spacer()
                 }
             }
+
+            // MIDI Standard Indicator (bottom-left)
+            if !viewModel.detectedStandards.isEmpty {
+                Divider()
+                HStack {
+                    MIDIStandardBar(standards: viewModel.detectedStandards)
+                    Spacer()
+                }
+            }
         }
         .padding()
         .frame(minWidth: 400, minHeight: 300)
